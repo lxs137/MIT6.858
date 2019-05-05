@@ -1,0 +1,816 @@
+<html>
+<head>
+<title>6.858 Spring 2019 Lab 1: Buffer overflows</title>
+<link rel="stylesheet" href="labs.css" type="text/css" />
+</head>
+
+<body>
+<h1>6.858 Spring 2019 Lab 1: Buffer overflows</h1>
+
+<p>
+<table border=0>
+<tr><td><b>Handed out:</b></td>
+    <td>Wednesday, February 6, 2019</td></tr>
+<tr><td><b>Parts 1 and 2 due:</b></td>
+    <td>Friday, February 15, 2019 (5:00pm)</td></tr>
+<tr><td><b>All parts due:</b></td>
+    <td>Friday, February 22, 2019 (5:00pm)</td></tr>
+</table>
+
+<p>
+<h2>Introduction</h2>
+
+<p>
+You will do a sequence of labs in 6.858. These labs will give you
+practical experience with common attacks and counter-measures.  To make the
+issues concrete, you will explore the attacks and counter-measures in the
+context of the zoobar web application in the following ways:
+<ul>
+<li>Lab 1: you will explore the zoobar web application,
+and use buffer overflow attacks to break its security properties.
+<li>Lab 2: you will improve the zoobar web application by using privilege
+separation, so that if one component is compromised, the adversary doesn't get
+control over the whole web application.
+<li>Lab 3: you will build a program analysis tool based on symbolic
+execution to find bugs in Python code such as the zoobar web application.
+<li>Lab 4: you will improve the zoobar application against browser attacks.
+</ul>
+
+<p>
+Lab 1 will introduce you to buffer overflow vulnerabilities, in the context of a
+web server called <tt>zookws</tt>. The <tt>zookws</tt> web server runs a
+simple python web application, <tt>zoobar</tt>, with which users transfer "zoobars"
+(credits) between each other.  You will find buffer overflows in
+the <tt>zookws</tt> web server code, write exploits for the buffer overflows to
+inject code into the server over the network, and figure out how to bypass
+non-executable stack protection.  Later labs look at other security aspects of
+the <tt>zoobar</tt> and <tt>zookws</tt> infrastructure.
+
+<p>Each lab requires you to learn a new programming language or some other piece
+of infrastructure.  For example, in this lab you must become intimately familiar
+with certain aspects of the C language, x86 assembly language, <tt>gdb</tt>,
+etc.  Detailed familiarity with many different pieces of infrastructure
+is needed to understand attacks and defenses
+in realistic situations: security weaknesses often show up in corner cases, and
+so you need to understand the details to craft exploits and design defenses for
+those corner cases.  These two factors (new infrastructure and details) can make
+the labs time consuming.  You should start early on the labs and work on them
+daily for some limited time (each lab has several exercises), instead of trying
+to do all exercises in a single shot just before the deadline. Take the time to
+understand the relevant details. If you get stuck, post a question on <a
+href="https://piazza.com/class/jrgkz27je7xh">Piazza</a>.
+
+<p>Several labs, including this lab, ask you to design exploits.  These exploits
+are realistic enough that you might be able to use them for a real attack, but
+you should <i>not</i> do so.  The point of the designing exploits is to teach
+you how to defend against them, not how to use them---attacking computer systems
+is illegal
+(see <a href="http://ist.mit.edu/network/rules">MIT network rules</a>)
+and can get you into serious trouble.  Don't do it.
+
+<p><b>NOTE:</b> Since we re-use the same lab assignments across years,
+we ask that you please do not make your lab code publicly accessible
+(e.g., by checking your solutions into a public repository on
+GitHub).  This helps keep the labs fair and interesting for students in
+future years.
+
+
+<h2>Lab infrastructure</h2>
+
+<p>
+Exploiting buffer overflows requires precise control over the execution
+environment.  A small change in the compiler, environment variables, or
+the way the program is executed can result in slightly different memory
+layout and code structure, thus requiring a different exploit.  For this
+reason, this lab uses a
+<a href="https://en.wikipedia.org/wiki/Virtual_machine">virtual machine</a> to
+run the vulnerable web server code.
+
+<p>
+To start working on this lab assignment, you'll need software that lets you run
+a virtual machine. For Linux users, we recommend running the course VM on
+<a href="http://www.linux-kvm.org/">KVM</a>, which is built into the Linux
+kernel. KVM should be available through your distribution, and is preinstalled
+on Athena cluster computers; on Debian or Ubuntu, try <span
+class="ttytype">apt-get install qemu-kvm</span>.  KVM requires
+hardware virtualization support in your CPU,  and you must enable this support in
+your BIOS (which is often, but not always, the default).  If you have another
+virtual machine monitor installed on your machine (e.g., VMware), that virtual
+machine monitor may grab the hardware virtualization support exclusively and
+prevent KVM from working.
+
+<p>
+On Windows, or Linux without KVM, use
+<a href="https://ist.mit.edu/vmware/workstation">VMware Player</a> from
+IS&amp;T.  On a Mac, use
+<a href="http://ist.mit.edu/vmware-fusion/">VMWare Fusion</a>.
+
+<p>
+Once you have virtual machine software installed on your machine, you should
+download
+the <a href="https://people.csail.mit.edu/jfrg/6.858-x86_64-v19.zip">course VM
+image</a>, and unpack it on your computer.  This virtual machine contains an
+installation of <a href="https://www.debian.org/">Debian</a> 9.7 Linux.
+
+<p> To start the course VM using VMware, import <tt>6.858-x86_64-v19.vmdk</tt>.
+Go to File &gt; New, select "create a custom virtual machine", choose Linux
+&gt; Debian 9.x 64-bit, choose Legacy BIOS, and use an existing virtual disk
+(and select the <tt>6.858-x86_64-v19.vmdk</tt> file, choosing the "Take this
+disk away" option). Finally, click Finish to complete the setup.
+
+<p>
+To start the VM with kvm, run <span
+class="ttytype">./6.858-x86_64-v19.sh</span> from a terminal (<tt>Ctrl+A x</tt>
+to force quit). If you get a permission denied error from this script,
+try adding yourself to the <tt>kvm</tt> group with 
+<tt>sudo gpasswd -a `whoami` kvm</tt>,
+then log out and log back in.
+
+<p>
+You'll use two accounts on the VM:
+
+<table class="table">
+<tr><th>Username</th><th>Password</th><th>Description</th></tr>
+<tr><td><tt>root</tt></td><td>6858</td>
+<td>You can use the <tt>root</tt> account to install new software packages
+with
+<span class="ttytype">apt-get install <i>pkgname</i></span>. Or you
+can log in as <tt>httpd</tt> and run
+<span class="ttytype">sudo</span>.</td>
+</tr>
+<tr><td><tt>httpd</tt></td><td>6858</td>
+<td>You should use the
+<tt>httpd</tt> account for your work.  
+</td>
+</tr>
+</table>
+
+<p id="ssh">
+You can either log into the virtual machine using its console, or use ssh to
+log into the virtual machine over the (virtual) network. The latter also lets
+you easily copy files into and out of the virtual machine with <tt>scp</tt> or
+<tt>rsync</tt>. How you access the virtual machine over the network depends on
+how you're running it. If you're using VMWare, you'll
+first have to find the virtual machine's IP address. To do so, log in as root
+on the console, run <span class="ttytype">ip addr show dev eth0</span>, and
+note the IP address listed beside <tt>inet</tt>. With kvm, you can use
+<tt>localhost</tt> as the IP address for ssh and HTTP. You can now log in with
+ssh by running the following command from your host machine:
+<span class="ttytype">ssh -p 2222 httpd@IPADDRESS</span>. To avoid having to
+type the password each time, you may want to set up an <a
+href="https://www.booleanworld.com/set-ssh-keys-linux-unix-server/">SSH
+Key</a>.
+
+<h2><a name="getting_started">Getting started</a></h2>
+The files you will need for this and subsequent labs
+are distributed using the <a href="http://git-scm.com/">Git</a> version control
+system. You can also use Git to keep track of any changes you make to the
+initial source code. Here's an
+<a href="https://hacker-tools.github.io/version-control/">overview
+of Git</a> and the
+<a href="http://www.kernel.org/pub/software/scm/git/docs/user-manual.html">Git
+user's manual</a>, which you may find useful.
+
+<p>
+The course Git repository is available at
+<span class="ttytype">https://web.mit.edu/6858/2019/lab.git</span>.
+To get the lab code, log into the VM using the <tt>httpd</tt> account and
+clone the source code for lab 1 as follows:
+
+<pre class="tty">
+httpd@6858-v19:~$ <span class="ttytype">git clone https://web.mit.edu/6858/2019/lab.git</span>
+Cloning into 'lab'...
+httpd@6858-v19:~$ <span class="ttytype">cd lab</span>
+httpd@6858-v19:~/lab$
+</pre>
+
+<p>
+Before you proceed with this lab assignment, make sure you can compile
+the <tt>zookws</tt> web server:
+
+<pre class="tty">
+httpd@6858-v19:~/labs$ <span class="ttytype">make</span>
+cc zookd.c -c -o zookd.o -m64 -g -std=c99 -Wall -D_GNU_SOURCE -static -fno-stack-protector
+cc http.c -c -o http.o -m64 -g -std=c99 -Wall -D_GNU_SOURCE -static -fno-stack-protector
+cc -m64  zookd.o http.o  -lcrypto -o zookd
+cc -m64 zookd.o http.o  -lcrypto -o zookd-exstack -z execstack
+cc -m64 zookd.o http.o  -lcrypto -o zookd-nxstack
+cc zookd.c -c -o zookd-withssp.o -m64 -g -std=c99 -Wall -D_GNU_SOURCE -static
+cc http.c -c -o http-withssp.o -m64 -g -std=c99 -Wall -D_GNU_SOURCE -static
+cc -m64  zookd-withssp.o http-withssp.o  -lcrypto -o zookd-withssp
+cc -m64   -c -o shellcode.o shellcode.S
+objcopy -S -O binary -j .text shellcode.o shellcode.bin
+cc run-shellcode.c -c -o run-shellcode.o -m64 -g -std=c99 -Wall -D_GNU_SOURCE -static -fno-stack-protector
+cc -m64  run-shellcode.o  -lcrypto -o run-shellcode
+rm shellcode.o
+httpd@6858-v19:~/labs$
+</pre>
+
+<p>
+  The component of <tt>zookws</tt> that receives HTTP requests
+  is <tt>zookd</tt>.  It is written in C and serves static files and executes
+  dynamic scripts. For this lab you don't have to understand the dynamic
+  scripts; they are written in Python and the exploits in this lab apply only to
+  C code. The HTTP-related code is in <tt>http.c</tt>.
+  <a href="http://www.garshol.priv.no/download/text/http-tut.html">Here</a> is a
+  tutorial about the HTTP protocol. 
+</p>
+
+<p>
+There are two versions of <tt>zookd</tt> you will be using:
+<ul>
+  <li> <tt>zookd-exstack</tt>
+  <li> <tt>zookd-nxstack</tt>
+</ul>
+<tt>zookd-exstack</tt> has an executable stack, which makes it easy to inject
+executable code given a stack buffer overflow vulnerability.
+<tt>zookd-nxstack</tt> has a non-executable stack, and requires a more
+sophisticated attack to exploit stack buffer overflows.
+
+<p>
+In order to run the web server in a predictable fashion---so that its
+stack and memory layout is the same every time---you will use the
+<tt>clean-env.sh</tt> script.  This is the same way in which we will
+run the web server during grading, so make sure all of your exploits
+work on this configuration!
+
+<p>
+The reference binaries of <tt>zookd</tt> are provided in <tt>bin.tar.gz</tt>,
+which we will use for grading. Make sure your exploits work on those binaries.
+The <span class="ttytype">make check</span> command will always use both
+<tt>clean-env.sh</tt> and <tt>bin.tar.gz</tt> to check your submission.
+
+<p>
+Now, make sure you can run the <tt>zookws</tt> web server
+and access the <tt>zoobar</tt> web application from a browser
+running on your machine, as follows:
+
+<pre class="tty">
+httpd@6858-v19:~/lab$ <span class="ttytype">./clean-env.sh ./zookd 8080</span>
+</pre>
+
+<p>
+The <tt>./clean-env.sh</tt> commands starts <tt>zookd</tt> on port 8080.
+To open the zoobar application, open your browser and point it at the URL
+<tt>http://IPADDRESS:8080/</tt>, where <tt>IPADDRESS</tt> is the VM's IP
+address we found <a href="#ssh">above</a>. If something doesn't seem to be
+working, try to figure out what went wrong, or contact the course staff, before
+proceeding further.
+
+<p>
+<h2>Part 1: Finding buffer overflows</h2>
+
+<p>
+In the first part of this lab assignment, you will find buffer overflows
+in the provided web server.  To do this lab, you will need to understand
+the basics of buffer overflows.  To help you get started with this, you
+should read <a
+href="https://thesquareplanet.com/blog/smashing-the-stack-21st-century/">Smashing
+the Stack in the 21st Century</a>, which goes through the details of how buffer
+overflows work, and how they can be exploited.
+
+<p>
+<div class="todo required">
+<p>
+<span class="header">Exercise 1.</span>  Study the web server's C code (in
+<tt>zookd.c</tt> and <tt>http.c</tt>), and find one example of code that allows
+an attacker to overwrite the return address of a function. Hint: look for
+buffers allocated on the stack.  Write down a description of the vulnerability
+in the file <tt>answers.txt</tt>.  For
+your vulnerability, describe the buffer which may overflow, how you would
+structure the input to the web server (i.e., the HTTP request) to overflow the
+buffer and overwrite the return address, and the call stack that will trigger
+the buffer overflow (i.e., the chain of function calls starting
+from <tt>process_client</tt>).
+
+<p>It is worth taking your time on this exercise and familiarizing yourself with
+the code, because your next job is to exploit the vulnerability you identified.
+In fact, you may want to go back and forth between this exercise and Exercises 2
+and 3, as you work out the details and document them.  That is, if you find a
+buffer overflow that you think can be exploited, you can use Exercises 2 and 3 to figure out
+if it indeed can be exploited. It will be helpful to draw a stack diagram like
+the figures
+  in  <a href="https://thesquareplanet.com/blog/smashing-the-stack-21st-century/">Smashing
+    the Stack in the 21st Century</a>.
+</div>
+
+<p>
+Now, you will start developing exploits to take advantage of the buffer
+overflows you have found above.  We have provided template Python code
+for an exploit in <tt>/home/httpd/lab/exploit-template.py</tt>, which
+issues an HTTP request.  The exploit template takes two arguments, the
+server name and port number, so you might run it as follows to issue a
+request to <tt>zookws</tt> running on localhost:
+
+<pre class="tty">
+httpd@6858-v19:~/lab$ <span class="ttytype">./clean-env.sh ./zookd-exstack 8080 &amp;</span>
+[1] 2676
+httpd@6858-v19:~/lab$ <span class="ttytype">./exploit-template.py localhost 8080</span>
+HTTP request:
+GET / HTTP/1.0
+
+...
+httpd@6858-v19:~/lab$
+</pre>
+
+<p>
+You are free to use this template, or write your own exploit code
+from scratch.  Note, however, that if you choose to write your own
+exploit, the exploit must run correctly inside the provided virtual
+machine.
+
+<p>
+You may find <tt>gdb</tt> useful in building your exploits (though it is
+not required for you to do so).  As
+<tt>zookd</tt> forks off many processes (one for each client), it can be
+difficult to debug the correct one. The easiest way to do this is to run the web
+server ahead of time with <tt>clean-env.sh</tt> and then attaching <tt>gdb</tt>
+to an already-running process with the <tt>-p</tt> flag.  You can find the PID
+of a process by using <tt>pgrep</tt>; for example, to attach to
+<tt>zookd-exstack</tt>, start the server and, in another shell, run
+
+<pre class="tty">
+httpd@6858-v19:~/lab$ <span class="ttytype">gdb -p $(pgrep zookd-)</span>
+...
+(gdb) <span class="ttytype">break <var>your-breakpoint</var></span>
+Breakpoint 1 at 0x1234567: file zookd.c, line 999.
+(gdb) <span class="ttytype">continue</span>
+Continuing.
+</pre>
+
+<p>
+Keep in mind that a process being debugged by <tt>gdb</tt> will not
+get killed even if you terminate the parent <tt>zookd</tt> process
+using <tt>^C</tt>.  If you are having trouble restarting the web server,
+check for leftover processes from the previous run, or be sure to exit
+<tt>gdb</tt> before restarting <tt>zookd</tt>. You can also save yourself some
+typing by using <tt>b</tt> instead of <tt>break</tt>, and <tt>c</tt> instead of
+<tt>continue</tt>.
+
+<p>
+When a process being debugged by <tt>gdb</tt> forks, by default
+<tt>gdb</tt> continues to debug the parent process and does not attach
+to the child. Since <tt>zookd</tt> forks a child process to service
+each request, you may find it helpful to have <tt>gdb</tt> attach to
+the child on fork, using the command <tt>set follow-fork-mode child</tt>.
+We have added that command to <tt>/home/httpd/lab/.gdbinit</tt>, which
+will take effect if you start <tt>gdb</tt> in that directory.
+
+<p>
+For this and subsequent exercises, you may need to encode your attack
+payload in different ways, depending on which vulnerability you are
+exploiting.  In some cases, you may need to make sure that your attack
+payload is URL-encoded; that is, use <code>+</code> instead of
+space and <code>%2b</code> instead of <code>+</code>.  Here is a <a
+href="http://www.blooberry.com/indexdot/html/topics/urlencoding.htm">URL
+encoding reference</a> and a handy <a
+href="https://www.url-encode-decode.com/.">conversion
+tool</a>. You can also use quoting functions in the python <tt>urllib</tt>
+module to URL encode strings.  In other cases, you may need to include
+binary values into your payload.  The Python
+<a href="http://docs.python.org/2/library/struct.html">struct</a> module
+can help you do that.  For example, <tt>struct.pack("&lt;Q", x)</tt> will
+produce an 8-byte (64-bit) binary encoding of the integer <tt>x</tt>.
+
+<p>
+<div class="todo required">
+<p>
+<span class="header">Exercise 2.</span>
+
+Write an exploit that uses a buffer overflow
+to crash the web server (or one of the processes it creates).
+You do not need to inject code at
+this point.  Verify that your exploit crashes the server by
+checking the last few lines of <tt>dmesg | tail</tt>, using
+<tt>gdb</tt>, or observing that the web server crashes (i.e., it will print <tt>
+  Child process 9999 terminated incorrectly, receiving signal 11</tt>)
+
+<p>
+Provide the code for the exploit in a file called <tt>exploit-2.py</tt>.
+
+<p>
+The vulnerability you found in Exercise 1 may be too hard to exploit.
+Feel free to find and exploit a different vulnerability.
+</div>
+
+<p>
+You can check whether your exploits crash the server as follows:
+
+<pre class="tty">
+httpd@6858-v19:~/lab$ <span class="ttytype">make check-crash</span>
+</pre>
+
+<p>
+<h2>Part 2: Code injection</h2>
+
+<p>
+In this part, you will use your buffer overflow exploits to inject
+code into the web server.
+The goal of the injected code will be to unlink (remove) a
+sensitive file on the server, namely <tt>/home/httpd/grades.txt</tt>.
+Use <tt>zookd-exstack</tt>,
+since it has an executable stack that makes it easier to inject
+code. The <tt>zookws</tt> web server should be started as follows.
+<pre class="tty">
+httpd@6858-v19:~/lab$ <span class="ttytype">./clean-env.sh ./zookd-exstack 8080</span>
+</pre>
+
+<p>
+You can build the exploit in two steps.  First, write the shell code
+that unlinks the sensitive file, namely <tt>/home/httpd/grades.txt</tt>.
+Second, embed the compiled shell code in an HTTP request that
+triggers the buffer overflow in the web server.
+
+<p>
+When writing shell code, it is often easier to use assembly language rather
+than higher-level languages, such as C.  This is because the exploit
+usually needs fine control over the stack layout, register values and code
+size.  The C compiler will generate additional function preludes and perform various
+optimizations, which makes the compiled binary code unpredictable.
+
+<p>
+We have provided shell code for you to use in
+<tt>/home/httpd/lab/shellcode.S</tt>, along with <tt>Makefile</tt>
+rules that produce <tt>/home/httpd/lab/shellcode.bin</tt>, a compiled
+version of the shell code, when you run <span class="ttytype">make</span>.
+The provided shell code is intended to exploit setuid-root binaries, and thus it
+runs a shell.  You will need to modify this shell code to instead unlink
+<tt>/home/httpd/grades.txt</tt>.
+
+<p>
+To help you develop your shell code for this exercise, we have
+provided a program called <tt>run-shellcode</tt> that will run your
+binary shell code, as if you correctly jumped to its starting point.
+For example, running it on the provided shell code will cause the program
+to <tt>execve("/bin/sh")</tt>, thereby giving you another shell prompt:
+
+<pre class="tty">
+httpd@6858-v19:~/lab$ <span class="ttytype">./run-shellcode shellcode.bin</span>
+</pre>
+
+<p>
+<div class="todo required">
+<p>
+<span class="header">Exercise 3 (warm-up).</span>
+Modify <tt>shellcode.S</tt> to unlink <tt>/home/httpd/grades.txt</tt>.
+Your assembly code can either invoke the <tt>SYS_unlink</tt> system call,
+or call the <tt>unlink()</tt> library function.
+</div>
+
+<p>
+To test whether the shell code does its job, run the following commands:
+
+<pre class="tty">
+httpd@6858-v19:~/lab$ <span class="ttytype">make</span>
+httpd@6858-v19:~/lab$ <span class="ttytype">touch ~/grades.txt</span>
+httpd@6858-v19:~/lab$ <span class="ttytype">./run-shellcode shellcode.bin</span>
+# Make sure /home/httpd/grades.txt is gone
+httpd@6858-v19:~/lab$ <span class="ttytype">ls ~/grades.txt</span>
+ls: cannot access /home/httpd/grades.txt: No such file or directory
+</pre>
+
+<p>You may find <a href="https://linux.die.net/man/1/strace">strace</a> useful
+when trying to figure out what system calls your shellcode is making. Much like
+with <tt>gdb</tt>, you attach <tt>strace</tt> to a running program:
+
+<pre class="tty">
+httpd@6858-v19:~/lab$ <span class="ttytype">strace -f -p $(pgrep zookd-)</span>
+</pre>
+
+It will then print all of the system calls that program makes. If your shell
+code isn't working, try looking for the system call you think your shell code
+should be executing (i.e., <tt>unlink</tt>), and see whether it has the right
+arguments.
+
+<p>
+Next, we construct a malicious HTTP request that injects the compiled
+byte code to the web server, and hijack the server's control flow to
+run the injected code.
+When developing an exploit, you will have to think about what values
+are on the stack, so that you can modify them accordingly.
+
+<p>
+When you're constructing an exploit, you will often need to know the
+addresses of specific stack locations, or specific functions, in a
+particular program.  One way to do this is to add <tt>printf()</tt>
+statements to the function in question.  For example, you can use
+<tt>printf("Pointer: %p\n", &x);</tt> to print the address of variable
+<tt>x</tt> or function <tt>x</tt>.  However, this approach requires
+some care: you need to make sure that your added statements are not
+themselves changing the stack layout or code layout.  We (and <span
+class="ttytype">make check</span>) will be grading the lab without any
+<tt>printf</tt> statements you may have added.
+
+<p>
+A more fool-proof approach to determine addresses is to use
+<tt>gdb</tt>.  For example, suppose you want to know the stack address
+of the <tt>pn[]</tt> array in the <tt>http_serve</tt> function in
+<tt>zookd-exstack</tt>, and the address of its saved return pointer.  You can
+obtain them using <tt>gdb</tt> by first starting the web server (remember
+<tt>clean-evn</tt>!), and then attaching <tt>gdb</tt> to it:
+
+<pre class="tty">
+httpd@6858-v19:~/lab$ <span class="ttytype">gdb -p $(pgrep zookd-)</span>
+...
+(gdb) <span class="ttytype">break http_serve</span>
+Breakpoint 1 at 0x5555555561d2: file http.c, line 275.
+(gdb) <span class="ttytype">continue</span>
+Continuing.
+</pre>
+
+<p>
+Be sure to run <tt>gdb</tt> from the <tt>~/lab</tt> directory, so
+that it picks up the <tt>set follow-fork-mode child</tt> command from
+<tt>~/lab/.gdbinit</tt>.  Now you can issue an HTTP request to the web
+server, so that it triggers the breakpoint, and so that you can examine
+the stack of <tt>http_serve</tt>.
+
+<pre class="tty">
+httpd@6858-v19:~/lab$ <span class="ttytype">curl localhost:8080</span>
+</pre>
+
+This will cause <tt>gdb</tt> to hit the breakpoint you set and halt execution,
+and give you an opportunity to ask <tt>gdb</tt> for addresses you are
+interested in:
+
+
+<pre class="tty">
+Thread 2.1 "zookd-exstack" hit Breakpoint 1, http_serve (fd=4, name=0x55555575f80c "/") at http.c:275
+275         void (*handler)(int, const char *) = http_serve_none;
+(gdb) <span class="ttytype">print &amp;pn</span>
+$1 = (char (*)[2048]) 0x7fffffffd4b0
+(gdb) <span class="ttytype">info frame</span>
+Stack level 0, frame at 0x7fffffffdce0:
+ rip = 0x55555555622e in http_serve (http.c:275); saved rip = 0x5555555558e5
+ called by frame at 0x7fffffffed10
+ source language c.
+ Arglist at 0x7fffffffdcd0, args: fd=4, name=0x55555575f80c "/"
+ Locals at 0x7fffffffdcd0, Previous frame's sp is 0x7fffffffdce0
+ Saved registers:
+  rbx at 0x7fffffffdcc8, rbp at 0x7fffffffdcd0, rip at 0x7fffffffdcd8
+(gdb)
+</pre>
+
+<p>
+From this, you can tell that, at least for this invocation of
+<tt>http_serve</tt>, the <tt>pn[]</tt> buffer on the stack lives at
+address <tt>0x7fffffffd4b0</tt>, and the saved value of <tt>%rip</tt> (the
+return address in other words) is at <tt>0x7fffffffdcd8</tt>. If you want to
+see register contents, you can also use <span class="ttytype">info
+registers</span>.
+
+<p>
+Now it's your turn to develop an exploit. 
+
+<p>
+<div class="todo required">
+<p>
+<span class="header">Exercise 3.</span>
+Starting from one of your exploits from Exercise 2, construct an
+exploit that hijacks the control flow of the web server and unlinks
+<tt>/home/httpd/grades.txt</tt>.  Save this exploit in a file
+called <tt>exploit-3.py</tt>.
+
+<p>
+Verify that your exploit works; you will need to re-create
+<tt>/home/httpd/grades.txt</tt> after each successful exploit run.
+
+<p>
+Suggestion: first focus on obtaining control of the program counter.
+Sketch out the stack layout that you expect the program to have
+at the point when you overflow the buffer, and use <tt>gdb</tt>
+to verify that your overflow data ends up where you expect it
+to.  Step through the execution of the function to the return
+instruction to make sure you can control what address the program
+returns to.  The <tt>next</tt>, <tt>stepi</tt>, and <a
+href="http://visualgdb.com/gdbreference/commands/x"><tt>x</tt></a> commands in
+<tt>gdb</tt> should prove helpful.
+
+<p>
+Once you can reliably hijack the control flow of the program,
+find a suitable address that will contain the code you want
+to execute, and focus on placing the correct code at that
+address---e.g. a derivative of the provided shell code.
+</div>
+
+<p>You can check whether your exploit works as follows:
+
+<pre class="tty">
+httpd@6858-v19:~/lab$ <span class="ttytype">make check-exstack</span>
+</pre>
+
+<p>
+The test either prints "PASS" or "FAIL".
+We will grade your exploits in this way. Do not change the <tt>Makefile</tt>.
+
+<p>
+The standard C compiler used on Linux, gcc, implements a version of
+stack canaries (called SSP).  You can explore whether GCC's version of
+stack canaries would or would not prevent a given vulnerability by using
+the SSP-enabled versions of <tt>zookd</tt>: <tt>zookd-withssp</tt>.
+
+<p>
+Submit your answers to the first two parts of this lab assignment by running
+<span class="ttytype">make submit-a</span>. Alternatively, run 
+<span class="ttytype">make prepare-submit-a</span> and upload the resulting
+<tt>lab1a-handin.tar.gz</tt> file to
+<a href="handin.html">the submission web site</a>.
+
+<p>
+<h2>Part 3: Return-to-libc attacks</h2>
+
+<p>
+Many modern operating systems mark the stack non-executable in
+an attempt to make it more difficult to exploit buffer overflows.
+In this part, you will explore how this protection mechanism can
+be circumvented.  Run the web server configured with binaries
+that have a non-executable stack, as follows.
+<pre class="tty">
+httpd@6858-v19:~/lab$ <span class="ttytype">./clean-env.sh ./zookd-nxstack 8080</span>
+</pre>
+
+<p>
+The key observation to exploiting buffer overflows with a
+non-executable stack is that you still control the program counter,
+after a <tt>ret</tt> instruction jumps to an address that you placed
+on the stack.  Even though you cannot jump to the address of the
+overflowed buffer (it will not be executable), there's usually enough
+code in the vulnerable server's address space to perform the operation
+you want.
+
+<p>
+Thus, to bypass a non-executable stack, you need to first find the code
+you want to execute.  This is often a function in the standard library,
+called libc, such as <tt>execve</tt>, <tt>system</tt>, or <tt>unlink</tt>.
+Then, you need to arrange for the stack and registers to be in a state
+consistent with calling that function with the desired arguments.
+Finally, you need to arrange for the <tt>ret</tt> instruction to jump
+to the function you found in the first step.  This attack is often
+called a <i>return-to-libc</i> attack.
+
+<p>
+One challenge with return-to-libc attacks is that you need to pass arguments to
+the libc function that you want to invoke.  The x86-64 calling conventions make
+this a challenge because the first 6 arguments <a
+href="https://eli.thegreenplace.net/2011/09/06/stack-frame-layout-on-x86-64">are
+passed in registers</a>.
+For example, the first argument must be in register <tt>%rdi</tt>
+(see <tt>man 2 syscall</tt>, which documents the calling convention).  So, you
+need an instruction that loads the first argument into <tt>%rdi</tt>. In
+Exercise 3, you could have put that instruction in the buffer that your exploit
+overflows.  But, in this part of the lab, the stack is marked non-executable, so
+executing the instruction would crash the server, but wouldn't execute the
+instruction.
+
+<p>
+The solution to this problem is to find a piece of code in the server that
+loads an address into <tt>%rdi</tt>.  Such a piece of code is referred to as a
+"borrowed code chunk", or more generally as a <a
+href="https://en.wikipedia.org/wiki/Return-oriented_programming"><i>rop
+gadget</i></a>, because it is a tool for return-oriented programming (rop).
+Luckily, <tt>zookd.c</tt> accidentally has a useful gadget: see the function
+<tt>accidentally</tt>.
+
+<div class="todo required">
+<p>
+<span class="header">Exercise 4.</span>  Starting from your exploit in Exercise
+2 and 3, construct an exploit that unlinks
+<tt>/home/httpd/grades.txt</tt> when run on the binaries that have a
+non-executable stack.  Name this new exploit <tt>exploit-4.py</tt>.
+
+<p>
+In this attack you are going to take control of the server over
+the network <i>without injecting any code</i> into the server. You should use a
+return-to-libc attack where you redirect control flow to code that already
+existed before your attack. The outline of the attack is to perform a buffer
+overflow that:
+
+<ol>
+    <li>causes the argument to the chosen libc function to be on stack
+    <li>then causes <tt>accidentally</tt> to run so that argument ends up in <tt>%rdi</tt>
+    <li>and then causes <tt>accidentally</tt> to return to the chosen libc function
+</ol>
+
+<p>
+   It will be helpful to draw a stack diagram like
+the figures
+  in  <a href="https://thesquareplanet.com/blog/smashing-the-stack-21st-century/">Smashing
+    the Stack in the 21st Century</a>  at (1)
+the point that the buffer overflows and (2) at the point that
+<tt>accidentally</tt> runs.
+  
+</div>
+
+<p>You can test your exploits as follows:
+<pre class="tty">
+httpd@6858-v19:~/lab$ <span class="ttytype">make check-libc</span>
+</pre>
+
+<div class="todo challenge">
+<p>
+<span class="header">Challenge! (optional)</span>
+
+The <tt>accidentally</tt> function is a bit artificial. Figure out how to
+perform the return-to-libc attack without relying on that function (delete it
+and find another way to make your exploit work).
+
+<p>You will need to find another chunk of code to reuse that gives you control
+over <tt>%rdi</tt>. You can read through the disassembly (e.g. using
+<tt>objdump</tt>) to look for useful ROP gadgets.
+
+<p>Because of the nature of x86/x86-64, you can use another technique to find
+sequences of instructions that don't even appear in the disassembly!
+Instructions are variable-length (from 1 to 15 bytes), and by causing a
+misaligned parse (by jumping into the middle of an intended instruction), you
+can cause a sequence of machine code to be misinterpreted. For example, the
+instruction sequence <tt>pop %r15; ret</tt> corresponds to the machine code
+<tt>41 5F C3</tt>. But instead of executing from the start of this instruction
+stream, if you jump 1 byte in, the machine code <tt>5F C3</tt> corresponds to
+the assembly <tt>pop %rdi; ret</tt>.
+
+<p>Automated tools such as
+<a href="https://github.com/JonathanSalwan/ROPgadget">ROPgadget.py</a> can
+assist you in searching for ROP gadgets, even finding gadgets that arise from
+misaligned parses.
+
+</div>
+
+<p>
+<h2>Part 4: Fixing buffer overflows and other bugs</h2>
+
+<p>
+Now that you have figured out how to exploit buffer overflows,
+you will try to find other kinds of vulnerabilities in the same
+code.  As with many real-world applications, the "security" of
+our web server is not well-defined.  Thus, you will need to use
+your imagination to think of a plausible threat model and policy
+for the web server.
+
+<p>
+<div class="todo required">
+<p>
+<span class="header">Exercise 5.</span>
+Look through the source code and try to find more
+vulnerabilities that can allow an attacker to compromise the
+security of the web server.  Describe the attacks you have
+found in <tt>answers.txt</tt>, along with an explanation of
+the limitations of the attack, what an attacker can accomplish,
+why it works, and how you might go about fixing or preventing it.
+You should ignore bugs in <tt>zoobar</tt>'s code.  They will be addressed in
+future labs.
+
+<p>
+One approach for finding vulnerabilities is to trace the flow
+of inputs controlled by the attacker through the server code.
+At each point that the attacker's input is used, consider all
+the possible values the attacker might have provided at that
+point, and what the attacker can achieve in that manner.
+<p>
+You should find at least two vulnerabilities for this exercise.
+</div>
+
+<p>
+Finally, you will fix the vulnerabilities that you have exploited in
+this lab assignment.
+
+<p>
+<div class="todo required">
+<p>
+<span class="header">Exercise 6.</span>  For each buffer overflow vulnerability
+you have exploited in Exercises 2, 3, and 4, fix the web server's code to
+prevent the vulnerability in the first place.  Do not rely on compile-time or
+runtime mechanisms such
+as <a href="https://en.wikipedia.org/wiki/Stack_buffer_overflow#Stack_canaries">stack
+canaries</a>, removing <tt>-fno-stack-protector</tt>, baggy bounds checking,
+etc.
+
+<p>
+Make sure that your code actually stops your exploits from working.
+Use <span class="ttytype">make check-fixed</span> to run your exploits
+against your modified source code (as opposed to the staff reference
+binaries from <tt>bin.tar.gz</tt>).  These checks should report FAIL
+(i.e., exploit no longer works).  If they report PASS, this means the
+exploit still works, and you did not correctly fix the vulnerability.
+
+<p>
+Note that your submission should <i>not</i> make changes to the
+<tt>Makefile</tt> and other grading scripts.  We will use our unmodified
+version during grading.
+
+<p>
+You should also make sure your code still passes all tests using <span
+class="ttytype">make check</span>, which uses the unmodified lab binaries.
+
+</div>
+
+<p>
+You are done!
+Submit your answers to the lab assignment by running
+<span class="ttytype">make submit</span>. Alternatively, run 
+<span class="ttytype">make prepare-submit</span> and upload the resulting
+<tt>lab1-handin.tar.gz</tt> file to
+<a href="handin.html">the submission web site</a>.
+</div>
+
+</body>
+</html>
