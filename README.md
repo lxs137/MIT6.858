@@ -31,16 +31,16 @@ const char *http_request_headers(int fd)
 ### part-1
 * [bugs.txt](lab1/zook-server/bugs.txt)
 
-### part-2
+### part-2 (cause crash)
 * [exploit-2a](lab1/zook-server/exploit-2a.py)
 * [exploit-2b](lab1/zook-server/exploit-2b.py) 
 > this buffer overflow can cause process crash, but this process is a child process
 > parent process will still alive, so `make check-crash` will not pass
 
-### part-3
+### part-3 (cause file deletion with exstack)
 * [exploit-3](lab1/zook-server/exploit-3.py)
 * [shellcode](lab1/zook-server/shellcode.S)
 
-### part-4
+### part-4 (caue file deletion with nxstack)
 * [exploit-4a](lab1/zook-server/exploit-4a.py)
 * [exploit-4b](lab1/zook-server/exploit-4b.py) 
