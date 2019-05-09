@@ -3,15 +3,14 @@
 # desc
 #
 
-[zookd.c:1612]
-description goes here. for example, the 'buf' variable can be
-overwritten by the 'msg' variable because ...
+[zookd.c:65]
+function process_client has local variable: 'reqpath', contains HTTP Request URL, let this buffer overflow, cover return address, example in exploit-2a.py
 
-    <paste offending line(s) of code here>
+(function return address) - (reqpath's start address) = 0x814
 
-[http.c:1512]
-another description.
 
-    <paste offending line(s) of code here>
+[http.c:125]
+function http_request_headers has local variable: 'value', contains HTTP header value, let this buffer overflow, can cover function local variable 'colon', example in exploit-2b.py. But variable 'colon' will be reinit before used everytime, so this exploit is useless.
 
-# many more come here
+(colon address) - (value's start address) = 0x200
+
