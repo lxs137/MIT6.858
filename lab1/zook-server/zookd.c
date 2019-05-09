@@ -11,8 +11,8 @@
 
 #define MAX_SERVICES 256
 static int nsvcs;
-static int svcfds[MAX_SERVICES];
-static regex_t svcurls[MAX_SERVICES];
+static int svcfds[MAX_SERVICES];      // 0x804c120
+static regex_t svcurls[MAX_SERVICES]; // 0x804c520
 
 static void process_client(int);
 
@@ -60,11 +60,14 @@ int main(int argc, char **argv)
 
 static void process_client(int fd)
 {
+    // 0x804e520
     static char env[8192];  /* static variables are not on the stack */
+    // 0x8050520
     static size_t env_len;
-    char reqpath[2048];
-    const char *errmsg;
-    int i;
+    char reqpath[2048]; // $ebp-2064
+    const char *errmsg; // $ebp-16
+    int i; // $ebp-12
+           // $ebp-8 and $ebp -4 is callee-saved reg (%EDI, %ESI)
 
     /* get the request line */
     if ((errmsg = http_request_line(fd, reqpath, env, &env_len)))

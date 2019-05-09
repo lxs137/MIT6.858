@@ -115,6 +115,11 @@ const char *http_request_line(int fd, char *reqpath, char *env, size_t *env_len)
 
 const char *http_request_headers(int fd)
 {
+    // i: $ebp-12
+    // sp: $ebp-16
+    // colon: $ebp-20
+    // value: $ebp-532
+    // buf: 0x804e100
     static char buf[8192];      /* static variables are not on the stack */
     int i;
     char value[512];
