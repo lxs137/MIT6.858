@@ -43,4 +43,8 @@ const char *http_request_headers(int fd)
 
 ### part-4 (caue file deletion with nxstack)
 * [exploit-4a](lab1/zook-server/exploit-4a.py)
-* [exploit-4b](lab1/zook-server/exploit-4b.py) 
+* [exploit-4b](lab1/zook-server/exploit-4b.py)
+
+### part-extra (chaining function calls with return-to-libc)
+* [exploit-extra](lab1/zook-server/exploit-extra.py) ([guide](https://www.exploit-db.com/docs/english/28553-linux-classic-return-to-libc-&-return-to-libc-chaining-tutorial.pdf))
+> sys\_unlink("/home/httpd/grades.txt") -> pop/ret -> touch("grades.txt") (http.c:18) -> sys\_exit()
