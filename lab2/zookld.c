@@ -144,6 +144,18 @@ pid_t launch_svc(CONF *conf, const char *name)
                     break;
     }
 
+    if ((dir = NCONF_get_string(conf, name, "dir")))
+    {
+        if (chdir(dir) == -1) {
+            perror("can not cd to dir");
+            return 1;
+        }
+        if (chroot(dir) == -1) {
+            perror("chroot err");
+            return 1;
+        }
+    }
+
     if (NCONF_get_number_e(conf, name, "uid", &uid))
     {
         /* change real, effective, and saved uid to uid */
@@ -169,18 +181,6 @@ pid_t launch_svc(CONF *conf, const char *name)
         /* set the grouplist to gids */
         for (i = 0; i < ngids; i++)
             warnx("extra gid %d", gids[i]);
-    }
-
-    if ((dir = NCONF_get_string(conf, name, "dir")))
-    {
-        if (chdir(dir) == -1) {
-            perror("can not cd to dir");
-            return 1;
-        }
-        if (chroot(dir) == -1) {
-            perror("chroot err");
-            return 1;
-        }
     }
 
     signal(SIGCHLD, SIG_DFL);
