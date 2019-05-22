@@ -156,20 +156,20 @@ pid_t launch_svc(CONF *conf, const char *name)
         }
     }
 
-    if (NCONF_get_number_e(conf, name, "uid", &uid))
-    {
-        /* change real, effective, and saved uid to uid */
-        if (setresuid(uid, uid, uid) == -1) {
-            perror("can not setuid");
-            return 1;
-        }
-    }
-
     if (NCONF_get_number_e(conf, name, "gid", &gid))
     {
         /* change real, effective, and saved gid to gid */
         if (setresgid(gid, gid, gid) == -1) {
             perror("can not setgid");
+            return 1;
+        }
+    }
+
+    if (NCONF_get_number_e(conf, name, "uid", &uid))
+    {
+        /* change real, effective, and saved uid to uid */
+        if (setresuid(uid, uid, uid) == -1) {
+            perror("can not setuid");
             return 1;
         }
     }
