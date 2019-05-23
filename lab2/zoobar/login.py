@@ -3,7 +3,7 @@ from functools import wraps
 from debug import *
 from zoodb import *
 
-import auth
+import auth_client
 import bank
 import random
 
@@ -12,7 +12,7 @@ class User(object):
         self.person = None
 
     def checkLogin(self, username, password):
-        token = auth.login(username, password)
+        token = auth_client.login(username, password)
         if token is not None:
             return self.loginCookie(username, token)
         else:
@@ -26,7 +26,18 @@ class User(object):
         self.person = None
 
     def addRegistration(self, username, password):
-        token = auth.register(username, password)
+        persondb = person_setup()
+        person = persondb.query(Person).get(username)
+        if persondb.query(Person).get(username):
+            return None
+        newperson = Person()
+        newperson.username = username
+        persondb.add(newperson)
+        persondb.commit()
+
+        token = auth_client.register(username, password)
+        print "register res: %s" % token
+
         if token is not None:
             return self.loginCookie(username, token)
         else:
@@ -36,7 +47,7 @@ class User(object):
         if not cookie:
             return
         (username, token) = cookie.rsplit("#", 1)
-        if auth.check_token(username, token):
+        if auth_client.check_token(username, token):
             self.setPerson(username, token)
 
     def setPerson(self, username, token):
@@ -92,6 +103,7 @@ def login():
                     login_error = "Invalid username or password."
 
     nexturl = request.values.get('nexturl', url_for('index'))
+    print "Login Response: %s, %s, %s" % (login_error, nexturl, cookie)
     if cookie:
         response = redirect(nexturl)
         ## Be careful not to include semicolons in cookie value; see
