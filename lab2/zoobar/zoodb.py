@@ -5,20 +5,26 @@ import os
 from debug import *
 
 CredBase = declarative_base()
+BankBase = declarative_base()
 PersonBase = declarative_base()
 TransferBase = declarative_base()
 
 class Person(PersonBase):
     __tablename__ = "person"
     username = Column(String(128), primary_key=True)
-    zoobars = Column(Integer, nullable=False, default=10)
     profile = Column(String(5000), nullable=False, default="")
 
 class Cred(CredBase):
     __tablename__ = "cred"
     username = Column(String(128), primary_key=True)
     password = Column(String(128))
+    salt = Column(String(128))
     token = Column(String(128))
+
+class Bank(BankBase):
+    __tablename__ = "bank"
+    username = Column(String(128), primary_key=True)
+    zoobars = Column(Integer, nullable=False, default=10)
 
 class Transfer(TransferBase):
     __tablename__ = "transfer"
@@ -27,6 +33,8 @@ class Transfer(TransferBase):
     recipient = Column(String(128))
     amount = Column(Integer)
     time = Column(String)
+    def as_dict(self):
+       return {c.name: str(getattr(self, c.name)) for c in self.__table__.columns}
 
 def dbsetup(name, base):
     thisdir = os.path.dirname(os.path.abspath(__file__))
@@ -41,6 +49,9 @@ def dbsetup(name, base):
     session = sessionmaker(bind=engine)
     return session()
 
+def bank_setup():
+    return dbsetup("bank", BankBase)
+
 def cred_setup():
     return dbsetup("cred", CredBase)
 
@@ -53,7 +64,7 @@ def transfer_setup():
 import sys
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print "Usage: %s [init-person|init-transfer]" % sys.argv[0]
+        print "Usage: %s [init-person|init-transfer|init-cred|init-bank]" % sys.argv[0]
         exit(1)
 
     cmd = sys.argv[1]
@@ -63,5 +74,7 @@ if __name__ == "__main__":
         transfer_setup()
     elif cmd == 'init-cred':
         cred_setup()
+    elif cmd == 'init-bank':
+        bank_setup()
     else:
         raise Exception("unknown command %s" % cmd)
