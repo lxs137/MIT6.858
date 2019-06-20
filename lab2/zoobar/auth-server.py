@@ -8,6 +8,9 @@ from debug import *
 class AuthRpcServer(rpclib.RpcServer):
     def rpc_login(self, username, password):
     	return auth.login(username, password)
+
+    def rpc_get_user(self, username):
+    	return auth.get_user(username)
     
     def rpc_register(self, username, password):
     	return auth.register(username, password)

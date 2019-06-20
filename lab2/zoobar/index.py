@@ -1,17 +1,11 @@
 from flask import g, render_template, request
 from login import requirelogin
 from debug import *
-from zoodb import *
+import pcode_client 
 
 @catch_err
 @requirelogin
 def index():
     if 'profile_update' in request.form:
-        persondb = person_setup()
-        person = persondb.query(Person).get(g.user.person.username)
-        person.profile = request.form['profile_update']
-        persondb.commit()
-
-        ## also update the cached version (see login.py)
-        g.user.person.profile = person.profile
+        pcode_client.update_pcode(g.user.person.username, g.user.token, request.form['profile_update'])
     return render_template('index.html')

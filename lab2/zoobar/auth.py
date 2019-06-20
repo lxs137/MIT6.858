@@ -25,6 +25,13 @@ def login(username, password):
     else:
         return None
 
+def get_user(username):
+    db = person_setup()
+    user_info = db.query(Person).get(username)
+    if not user_info:
+        return None
+    return user_info.as_dict()
+
 def register(username, password):
     db = cred_setup()
     if db.query(Cred).get(username):

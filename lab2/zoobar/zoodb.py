@@ -7,10 +7,15 @@ from debug import *
 CredBase = declarative_base()
 BankBase = declarative_base()
 PersonBase = declarative_base()
+PcodeBase = declarative_base()
 TransferBase = declarative_base()
 
 class Person(PersonBase):
     __tablename__ = "person"
+    username = Column(String(128), primary_key=True)
+
+class Pcode(PcodeBase):
+    __tablename__ = "pcode"
     username = Column(String(128), primary_key=True)
     profile = Column(String(5000), nullable=False, default="")
 
@@ -61,10 +66,13 @@ def person_setup():
 def transfer_setup():
     return dbsetup("transfer", TransferBase)
 
+def pcode_setup():
+    return dbsetup("pcode", PcodeBase)
+
 import sys
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print "Usage: %s [init-person|init-transfer|init-cred|init-bank]" % sys.argv[0]
+        print "Usage: %s [init-person|init-transfer|init-cred|init-bank|init-pcode]" % sys.argv[0]
         exit(1)
 
     cmd = sys.argv[1]
@@ -76,5 +84,7 @@ if __name__ == "__main__":
         cred_setup()
     elif cmd == 'init-bank':
         bank_setup()
+    elif cmd == 'init-pcode':
+        pcode_setup()
     else:
         raise Exception("unknown command %s" % cmd)

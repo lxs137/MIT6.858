@@ -15,9 +15,7 @@ def users():
         persondb = person_setup()
         user = persondb.query(Person).get(request.values['user'])
         if user:
-            p = user.profile
-            if p.startswith("#!python"):
-                p = run_profile(user)
+            p = run_profile(request.values['user'])
 
             p_markup = Markup("<b>%s</b>" % p)
             args['profile'] = p_markup
