@@ -187,6 +187,14 @@ class sym_minus(sym_binop):
   def _z3expr(self, printable):
     return z3expr(self.a, printable) - z3expr(self.b, printable)
 
+class sym_mul(sym_binop):
+  def _z3expr(self, printable):
+    return z3expr(self.a, printable) * z3expr(self.b, printable)
+
+class sym_div(sym_binop):
+  def _z3expr(self, printable):
+    return z3expr(self.a, printable) / z3expr(self.b, printable)
+
 ## Exercise 2: your code here.
 ## Implement AST nodes for division and multiplication.
 
@@ -480,6 +488,21 @@ class concolic_int(int):
     res = self.__v - o
     return concolic_int(sym_minus(ast(self), ast(o)), res)
 
+  def __mul__(self, o):
+    if isinstance(o, concolic_int):
+      res = self.__v * o.__v
+    else:
+      res = self.__v * o
+    return concolic_int(sym_mul(ast(self), ast(o)), res)
+
+  def __div__(self, o):
+    if isinstance(o, concolic_int):
+      res = self.__v / o.__v
+    else:
+      res = self.__v / o
+    return concolic_int(sym_div(ast(self), ast(o)), res)
+
+
   ## Exercise 2: your code here.
   ## Implement symbolic division and multiplication.
 
@@ -680,6 +703,18 @@ def concolic_test(testfunc, maxiter = 100, verbose = 0):
 
     ## for each branch, invoke Z3 to find an input that would go
     ## the other way, and add it to the list of inputs to explore.
+
+    next_constr = list(cur_path_constr)
+
+    for idx in range(len(cur_path_constr) - 1, -1, -1):
+      next_constr[idx] = sym_not(next_constr[idx])
+      constr_merged = sym_and(*next_constr[:idx+1])
+      if constr_merged in checked:
+        continue
+      checked.add(constr_merged)
+      (ok, model) = fork_and_check(constr_merged)
+      if ok == z3.sat:
+        inputs.add(model, cur_path_constr_callers[idx])
 
     ## Exercise 3: your code here.
     ##
