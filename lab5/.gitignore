@@ -1,0 +1,17 @@
+/*.o
+/*.log
+/zookd
+/zookd-exstack
+/zookd-nxstack
+/zookd-withssp
+/zookfs
+/zookfs-exstack
+/zookfs-nxstack
+/zookfs-withssp
+/zookld
+/shellcode*.bin
+/run-shellcode
+/submit.key
+/submit.token
+/zoobar/db
+/lab*-handin.tar.gz
