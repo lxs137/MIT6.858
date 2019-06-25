@@ -75,8 +75,29 @@ def test_stuff():
     for x in resp:
       print x
 
-  ## Exercise 6: your code here.
+  after_balance = sum([p.zoobars for p in pdb.query(zoobar.zoodb.Person).all()])
+  if after_balance != balance1:
+    debug_out = 'balance_mismatch: '
+    for p in pdb.query(zoobar.zoodb.Person).all():
+      debug_out += '%s: %d, ' % (p.username, p.zoobars)
+    print debug_out
+    report_balance_mismatch()
 
+  check_user = ['alice', 'bob']
+  for idx, user in enumerate(['alice', 'bob']):    
+    if environ['HTTP_COOKIE'].startswith('PyZoobarLogin=%s' % user): 
+      del check_user[idx] 
+
+  for user in check_user:
+    user_row = pdb.query(zoobar.zoodb.Person).get(user)
+    if user_row != None and user_row.zoobars < 10:
+      debug_out = 'zoobar_theft: '
+      for t in tdb.query(zoobar.zoodb.Transfer).all():
+        debug_out += '%s ,' % vars(t)
+      print debug_out
+      report_zoobar_theft()
+
+  ## Exercise 6: your code here.
   ## Detect balance mismatch.
   ## When detected, call report_balance_mismatch()
 
